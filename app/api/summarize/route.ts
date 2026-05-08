@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const summary = await summarizeWithGroq(extractedText.slice(0, 50000));
-    return NextResponse.json({ summary });
+    return NextResponse.json({ summary, extractedText: extractedText.slice(0, 50000) });
   } catch (err) {
     console.error("Groq error:", err);
     return NextResponse.json(

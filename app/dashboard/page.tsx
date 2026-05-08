@@ -6,32 +6,9 @@ import ThemeToggle from "@/components/ThemeToggle";
 
 type Status = "idle" | "uploading" | "success" | "error";
 
-// Toast notification component
-function Toast({ message, type, onClose }: { message: string; type: "success" | "error"; onClose: () => void }) {
-  const [visible, setVisible] = useState(true);
-
-  setTimeout(() => {
-    setVisible(false);
-    onClose();
-  }, 3000);
-
-  if (!visible) return null;
-
-  return (
-    <div className={`fixed top-4 right-4 px-4 py-3 rounded-lg text-sm font-medium flex items-center gap-2 animate-in fade-in slide-in-from-top-2 z-50
-      ${type === "success" ? "bg-green-50 dark:bg-green-950/40 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-900" : "bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-900"}`}>
-      {type === "success" ? (
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <polyline points="20 6 9 17 4 12"/>
-        </svg>
-      ) : (
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-        </svg>
-      )}
-      {message}
-    </div>
-  );
+interface Message {
+  role: "user" | "assistant";
+  content: string;
 }
 
 export default function DashboardPage() {
@@ -40,8 +17,12 @@ export default function DashboardPage() {
   const [status, setStatus] = useState<Status>("idle");
   const [errorMsg, setErrorMsg] = useState("");
   const [dragOver, setDragOver] = useState(false);
-  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const [extractedText, setExtractedText] = useState("");
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [question, setQuestion] = useState("");
+  const [asking, setAsking] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
   const handleFile = (f: File) => {
     const allowed = ["application/pdf", "text/plain"];
@@ -59,6 +40,8 @@ export default function DashboardPage() {
     setStatus("idle");
     setSummary("");
     setErrorMsg("");
+    setMessages([]);
+    setExtractedText("");
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -73,20 +56,50 @@ export default function DashboardPage() {
     setStatus("uploading");
     setSummary("");
     setErrorMsg("");
+    setMessages([]);
+
     const formData = new FormData();
     formData.append("file", file);
+
     try {
       const res = await fetch("/api/summarize", { method: "POST", body: formData });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Something went wrong");
       setSummary(data.summary);
+      setExtractedText(data.extractedText || "");
       setStatus("success");
-      setToast({ message: "Document summarized successfully!", type: "success" });
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Unknown error";
-      setErrorMsg(message);
+      setErrorMsg(err instanceof Error ? err.message : "Unknown error");
       setStatus("error");
-      setToast({ message, type: "error" });
+    }
+  };
+
+  const handleAsk = async () => {
+    if (!question.trim() || !extractedText) return;
+    const userMsg = question.trim();
+    setQuestion("");
+    setAsking(true);
+    setMessages((prev) => [...prev, { role: "user", content: userMsg }]);
+
+    setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: userMsg, context: extractedText }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to get answer");
+      setMessages((prev) => [...prev, { role: "assistant", content: data.answer }]);
+    } catch (err: unknown) {
+      setMessages((prev) => [...prev, {
+        role: "assistant",
+        content: err instanceof Error ? err.message : "Something went wrong.",
+      }]);
+    } finally {
+      setAsking(false);
+      setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
     }
   };
 
@@ -95,199 +108,186 @@ export default function DashboardPage() {
     setSummary("");
     setStatus("idle");
     setErrorMsg("");
+    setMessages([]);
+    setExtractedText("");
+    setQuestion("");
     if (inputRef.current) inputRef.current.value = "";
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-slate-50 to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-300">
-      
-      {/* Background decorative elements */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-violet-200/20 dark:bg-violet-900/20 rounded-full blur-3xl"></div>
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-indigo-200/20 dark:bg-indigo-900/20 rounded-full blur-3xl"></div>
-      </div>
-
-      {/* Toast Notifications */}
-      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
-
+    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 transition-colors duration-300">
       {/* Navbar */}
-      <header className="fixed top-0 inset-x-0 z-20 flex items-center justify-between px-6 h-16
-                         border-b border-slate-200/50 dark:border-slate-800/50
-                         bg-white/60 dark:bg-slate-950/60 backdrop-blur-2xl">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-600 to-indigo-600 flex items-center justify-center shadow-xl shadow-violet-500/30 dark:shadow-violet-500/20">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/>
-              <polyline points="14 2 14 8 20 8"/>
-              <line x1="16" y1="13" x2="8" y2="13"/>
-              <line x1="16" y1="17" x2="8" y2="17"/>
-              <line x1="10" y1="9" x2="8" y2="9"/>
-            </svg>
-          </div>
-          <span className="font-bold text-lg tracking-tight bg-gradient-to-r from-violet-600 to-indigo-600 bg-clip-text text-transparent">Summarizer</span>
-        </div>
+      <nav className="sticky top-0 z-10 flex items-center justify-between px-6 py-4
+                      bg-white/80 dark:bg-zinc-900/80 backdrop-blur border-b
+                      border-zinc-200 dark:border-zinc-800">
+        <span className="text-xl font-bold tracking-tight">📄 DocSummarizer</span>
         <div className="flex items-center gap-3">
           <ThemeToggle />
           <UserButton />
         </div>
-      </header>
+      </nav>
 
-      {/* Page */}
-      <main className="pt-20 min-h-screen flex flex-col items-center justify-start px-4 py-20 relative z-10">
-        <div className="w-full max-w-3xl flex flex-col gap-12">
-
-          {/* Heading */}
-          <div className="text-center space-y-4 animate-in fade-in slide-in-from-bottom-6 duration-700">
-            <h1 className="text-5xl md:text-6xl font-black tracking-tight bg-gradient-to-r from-violet-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent">
-              Smart Document <br /> Summarizer
-            </h1>
-            <p className="text-lg text-slate-600 dark:text-slate-400 max-w-2xl mx-auto leading-relaxed">
-              Upload any PDF or text document and get an AI-powered summary in seconds. Perfect for research, learning, and staying informed.
-            </p>
-          </div>
-
-          {/* Upload Zone */}
-          <div
-            onDrop={handleDrop}
-            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-            onDragLeave={() => setDragOver(false)}
-            onClick={() => inputRef.current?.click()}
-            className={`
-              group relative flex flex-col items-center justify-center gap-4
-              rounded-3xl border-2 border-dashed p-16 cursor-pointer
-              transition-all duration-300 animate-in fade-in slide-in-from-bottom-5 delay-100
-              ${dragOver
-                ? "border-violet-400 bg-violet-50/80 dark:bg-violet-950/40 scale-105 shadow-2xl shadow-violet-500/20"
-                : file
-                  ? "border-violet-300 dark:border-violet-700 bg-gradient-to-br from-violet-50/60 to-indigo-50/60 dark:from-violet-950/30 dark:to-indigo-950/30 shadow-lg shadow-violet-500/10"
-                  : "border-slate-300 dark:border-slate-700 hover:border-violet-400 dark:hover:border-violet-600 hover:bg-slate-50/50 dark:hover:bg-slate-900/30"
-              }
-            `}
-          >
-            <input
-              ref={inputRef}
-              type="file"
-              accept=".pdf,.txt"
-              className="hidden"
-              onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
-            />
-
-            {file ? (
-              <>
-                <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-violet-100 to-indigo-100 dark:from-violet-900/50 dark:to-indigo-900/50 flex items-center justify-center animate-in zoom-in">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-violet-600 dark:text-violet-400">
-                    <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/>
-                    <polyline points="14 2 14 8 20 8"/>
-                  </svg>
-                </div>
-                <div className="text-center">
-                  <p className="text-lg font-bold text-violet-700 dark:text-violet-300">{file.name}</p>
-                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{(file.size / 1024).toFixed(1)} KB</p>
-                </div>
-                <p className="text-sm text-slate-400 dark:text-slate-500 font-medium">Click to change file</p>
-              </>
-            ) : (
-              <>
-                <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-700 flex items-center justify-center group-hover:from-violet-100 group-hover:to-indigo-100 dark:group-hover:from-violet-900/50 dark:group-hover:to-indigo-900/50 transition-all duration-300">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-slate-600 group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                    <polyline points="17 8 12 3 7 8"/>
-                    <line x1="12" y1="3" x2="12" y2="15"/>
-                  </svg>
-                </div>
-                <div className="text-center">
-                  <p className="text-lg font-bold text-slate-800 dark:text-slate-200">Drop your file here</p>
-                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">PDF or TXT · Max 10 MB</p>
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* Error */}
-          {status === "error" && (
-            <div className="flex items-start gap-4 px-6 py-4 rounded-2xl bg-red-50/80 dark:bg-red-950/40 border-2 border-red-200 dark:border-red-900/50 text-red-700 dark:text-red-300 animate-in fade-in slide-in-from-top-2 duration-300">
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mt-0.5 shrink-0 flex-none">
-                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-              </svg>
-              <div className="flex-1">
-                <p className="font-semibold">Error</p>
-                <p className="text-sm mt-1">{errorMsg}</p>
-              </div>
-            </div>
-          )}
-
-          {/* Actions */}
-          <div className="flex gap-4 animate-in fade-in slide-in-from-bottom-3 delay-200">
-            <button
-              onClick={handleSubmit}
-              disabled={!file || status === "uploading"}
-              className="flex-1 h-14 px-6 rounded-xl text-base font-bold text-white
-                         bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 
-                         active:from-violet-800 active:to-indigo-800 shadow-2xl shadow-violet-500/40 hover:shadow-violet-500/60
-                         disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none
-                         transition-all duration-150 flex items-center justify-center gap-3 group"
-            >
-              {status === "uploading" ? (
-                <>
-                  <span className="w-5 h-5 border-3 border-white/30 border-t-white rounded-full animate-spin" />
-                  <span>Summarizing…</span>
-                </>
-              ) : (
-                <>
-                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="group-hover:scale-110 transition-transform">
-                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-                  </svg>
-                  Summarize
-                </>
-              )}
-            </button>
-            {(file || status !== "idle") && (
-              <button
-                onClick={reset}
-                className="h-14 px-6 rounded-xl text-base font-bold
-                           text-slate-700 dark:text-slate-300
-                           border-2 border-slate-300 dark:border-slate-600
-                           hover:bg-slate-100 dark:hover:bg-slate-800/80
-                           active:bg-slate-200 dark:active:bg-slate-700
-                           transition-all duration-150"
-              >
-                Clear
-              </button>
-            )}
-          </div>
-
-          {/* Summary */}
-          {status === "success" && summary && (
-            <div className="rounded-3xl border-2 border-slate-200/50 dark:border-slate-700/50 overflow-hidden shadow-2xl shadow-slate-200/40 dark:shadow-slate-900/60 backdrop-blur-sm animate-in fade-in slide-in-from-bottom-5 duration-700 bg-white/80 dark:bg-slate-900/50">
-              <div className="flex items-center justify-between px-8 py-5 border-b-2 border-slate-100 dark:border-slate-800 bg-gradient-to-r from-slate-50 to-slate-50/50 dark:from-slate-800/50 dark:to-slate-900/50">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-green-100 to-emerald-100 dark:from-green-900/40 dark:to-emerald-900/40 flex items-center justify-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-green-600 dark:text-green-400">
-                      <polyline points="20 6 9 17 4 12"/>
-                    </svg>
-                  </div>
-                  <span className="text-sm font-black text-slate-700 dark:text-slate-300 uppercase tracking-widest">✨ AI Summary</span>
-                </div>
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(summary);
-                    setToast({ message: "Summary copied to clipboard!", type: "success" });
-                  }}
-                  className="text-sm font-bold text-slate-600 hover:text-violet-600 dark:hover:text-violet-400 transition-colors flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700/50"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                  </svg>
-                  Copy
-                </button>
-              </div>
-              <div className="p-8 text-base leading-relaxed text-slate-700 dark:text-slate-300 whitespace-pre-wrap bg-gradient-to-b from-white to-slate-50/50 dark:from-slate-950 dark:to-slate-900/50 font-medium">
-                {summary}
-              </div>
-            </div>
-          )}
-
+      <main className="max-w-2xl mx-auto px-4 py-12 flex flex-col gap-8">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight mb-1">AI Document Summarizer</h1>
+          <p className="text-zinc-500 dark:text-zinc-400">
+            Upload a PDF or text file, get a summary, then ask questions about it.
+          </p>
         </div>
+
+        {/* Upload Zone */}
+        <div
+          onDrop={handleDrop}
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onClick={() => inputRef.current?.click()}
+          className={`relative flex flex-col items-center justify-center gap-3 p-10 rounded-2xl border-2 border-dashed cursor-pointer transition-all
+            ${dragOver
+              ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30"
+              : "border-zinc-300 dark:border-zinc-700 hover:border-blue-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/50"
+            }`}
+        >
+          <input
+            ref={inputRef}
+            type="file"
+            accept=".pdf,.txt"
+            className="hidden"
+            onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
+          />
+          <div className="text-4xl">{file ? "📎" : "☁️"}</div>
+          {file ? (
+            <div className="text-center">
+              <p className="font-semibold text-blue-600 dark:text-blue-400">{file.name}</p>
+              <p className="text-sm text-zinc-500">{(file.size / 1024).toFixed(1)} KB</p>
+            </div>
+          ) : (
+            <div className="text-center">
+              <p className="font-medium">Drop a file here or click to browse</p>
+              <p className="text-sm text-zinc-500 mt-1">PDF or TXT · Max 10MB</p>
+            </div>
+          )}
+        </div>
+
+        {/* Error */}
+        {status === "error" && (
+          <div className="flex items-start gap-3 p-4 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 text-sm">
+            <span>⚠️</span>
+            <span>{errorMsg}</span>
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="flex gap-3">
+          <button
+            onClick={handleSubmit}
+            disabled={!file || status === "uploading"}
+            className="flex-1 py-3 px-6 rounded-xl font-semibold text-white bg-blue-600 hover:bg-blue-700
+                       disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            {status === "uploading" ? (
+              <span className="flex items-center justify-center gap-2">
+                <span className="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+                Summarizing…
+              </span>
+            ) : "✨ Summarize"}
+          </button>
+          {(file || status !== "idle") && (
+            <button
+              onClick={reset}
+              className="py-3 px-4 rounded-xl font-medium border border-zinc-300 dark:border-zinc-700
+                         hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors text-sm"
+            >
+              Reset
+            </button>
+          )}
+        </div>
+
+        {/* Summary Output */}
+        {status === "success" && summary && (
+          <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-zinc-100 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/50">
+              <span className="font-semibold text-sm">📋 Summary</span>
+              <button
+                onClick={() => navigator.clipboard.writeText(summary)}
+                className="text-xs text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 transition-colors"
+              >
+                Copy
+              </button>
+            </div>
+            <div className="p-5 text-sm leading-relaxed text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap">
+              {summary}
+            </div>
+          </div>
+        )}
+
+        {/* Chat Section */}
+        {status === "success" && extractedText && (
+          <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
+            <div className="px-5 py-3 border-b border-zinc-100 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/50">
+              <span className="font-semibold text-sm">💬 Ask about this document</span>
+            </div>
+
+            {/* Messages */}
+            <div className="flex flex-col gap-3 p-5 max-h-96 overflow-y-auto">
+              {messages.length === 0 && (
+                <p className="text-sm text-zinc-400 dark:text-zinc-500 text-center py-4">
+                  Ask anything about the document — e.g. "What are the main arguments?" or "Explain section 2."
+                </p>
+              )}
+              {messages.map((msg, i) => (
+                <div
+                  key={i}
+                  className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                >
+                  <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap
+                    ${msg.role === "user"
+                      ? "bg-blue-600 text-white rounded-br-sm"
+                      : "bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 rounded-bl-sm"
+                    }`}
+                  >
+                    {msg.content}
+                  </div>
+                </div>
+              ))}
+              {asking && (
+                <div className="flex justify-start">
+                  <div className="bg-zinc-100 dark:bg-zinc-800 rounded-2xl rounded-bl-sm px-4 py-2.5">
+                    <span className="flex gap-1 items-center">
+                      <span className="w-1.5 h-1.5 bg-zinc-400 rounded-full animate-bounce [animation-delay:0ms]" />
+                      <span className="w-1.5 h-1.5 bg-zinc-400 rounded-full animate-bounce [animation-delay:150ms]" />
+                      <span className="w-1.5 h-1.5 bg-zinc-400 rounded-full animate-bounce [animation-delay:300ms]" />
+                    </span>
+                  </div>
+                </div>
+              )}
+              <div ref={chatEndRef} />
+            </div>
+
+            {/* Input */}
+            <div className="flex gap-2 p-4 border-t border-zinc-100 dark:border-zinc-800">
+              <input
+                type="text"
+                value={question}
+                onChange={(e) => setQuestion(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleAsk()}
+                placeholder="Ask a question about the document…"
+                disabled={asking}
+                className="flex-1 px-4 py-2 rounded-xl text-sm border border-zinc-300 dark:border-zinc-700
+                           bg-zinc-50 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100
+                           placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500
+                           disabled:opacity-50"
+              />
+              <button
+                onClick={handleAsk}
+                disabled={!question.trim() || asking}
+                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium
+                           disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                Send
+              </button>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );
