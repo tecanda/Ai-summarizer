@@ -59,20 +59,17 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ## Project Structure
 
-\`\`\`
+```text
 app/
 ├── (auth)/
-│   ├── sign-in/       # Clerk sign-in page
-│   └── sign-up/       # Clerk sign-up page
+│   ├── sign-in/     # หน้า Login ของ Clerk
+│   └── sign-up/     # หน้า Register ของ Clerk
 ├── api/
-│   ├── summarize/     # Extracts text and generates summary
-│   └── chat/          # Answers questions about the document
-├── dashboard/         # Main upload + summary + chat UI
-├── layout.tsx
-└── page.tsx
+│   ├── summarize/   # API สำหรับสกัดข้อความและสรุปผล
+│   └── chat/        # API สำหรับถาม-ตอบข้อมูลจากเอกสาร
+├── dashboard/       # หน้าหลักสำหรับอัปโหลด สรุป และแชท
+├── layout.tsx       # Root Layout พร้อม ClerkProvider และ Theme Script
+└── page.tsx         # หน้าแรกสำหรับจัดการการ Redirect ผู้ใช้
 components/
-└── ThemeToggle.tsx    # Dark/light mode toggle
-\`\`\`
-\`\`\`
-
+└── ThemeToggle.tsx  # ปุ่มสลับโหมด มืด/สว่าง
 ---
