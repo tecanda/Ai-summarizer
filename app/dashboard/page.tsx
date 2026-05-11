@@ -120,7 +120,7 @@ export default function DashboardPage() {
       <nav className="sticky top-0 z-10 flex items-center justify-between px-6 py-4
                       bg-white/80 dark:bg-zinc-900/80 backdrop-blur border-b
                       border-zinc-200 dark:border-zinc-800">
-        <span className="text-xl font-bold tracking-tight">📄 DocSummarizer</span>
+        <span className="text-xl font-bold tracking-tight">📄 AiSummarizer</span>
         <div className="flex items-center gap-3">
           <ThemeToggle />
           <UserButton />
